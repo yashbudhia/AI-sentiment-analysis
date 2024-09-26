@@ -51,9 +51,10 @@ AI-Sentiment Analysis is a Python-based application that processes customer revi
 - You will get the reviews counted in postive, negative and neutral based on the sentiment.
 - format of count -
 
-```{
-    "positive": 25,
-    "negative": 23,
-    "neutral": 3
+```
+{
+    "positive": ,
+    "negative": ,
+    "neutral":
 }
 ```
