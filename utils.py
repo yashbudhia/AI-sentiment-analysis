@@ -28,7 +28,7 @@ def process_reviews(filepath):
 
     print(f"Total number of non-empty reviews: {len(reviews)}")
 
-    sentiment_counts = get_sentiment_analysis(reviews)
+    sentiment_counts, unclassified_reviews = get_sentiment_analysis(reviews)
     
     total_classified = sum(sentiment_counts.values())
     sentiment_proportions = {
@@ -40,11 +40,13 @@ def process_reviews(filepath):
         "counts": sentiment_counts,
         "proportions": sentiment_proportions,
         "total_reviews": len(reviews),
-        "unclassified": len(reviews) - total_classified
+        "unclassified": len(unclassified_reviews),
+        "unclassified_reviews": unclassified_reviews
     }
 
 def get_sentiment_analysis(reviews, batch_size=10):
     overall_sentiment = {"positive": 0, "negative": 0, "neutral": 0}
+    unclassified_reviews = []
 
     for i in range(0, len(reviews), batch_size):
         batch = reviews[i:i+batch_size]
@@ -67,24 +69,55 @@ def get_sentiment_analysis(reviews, batch_size=10):
             print(f"Batch {i//batch_size + 1} response:\n{response_content}\n")
 
             lines = response_content.split('\n')
-            summary_start = next(i for i, line in enumerate(lines) if line.startswith("Positive:"))
-            summary = lines[summary_start:]
+            classifications = []
+            for line in lines:
+                if line and line[0].isdigit():
+                    parts = line.split('.', 1)
+                    if len(parts) > 1:
+                        classification = parts[1].strip().lower()
+                        if classification in ['positive', 'negative', 'neutral']:
+                            classifications.append(classification)
 
-            batch_sentiment = {"positive": 0, "negative": 0, "neutral": 0}
-            for line in summary:
-                if line.startswith("Positive:"):
-                    batch_sentiment["positive"] = int(line.split(":")[1].strip())
-                elif line.startswith("Negative:"):
-                    batch_sentiment["negative"] = int(line.split(":")[1].strip())
-                elif line.startswith("Neutral:"):
-                    batch_sentiment["neutral"] = int(line.split(":")[1].strip())
+            summary_start = next((i for i, line in enumerate(lines) if line.startswith("Positive:")), -1)
+            if summary_start != -1:
+                summary = lines[summary_start:]
+                batch_sentiment = {"positive": 0, "negative": 0, "neutral": 0}
+                for line in summary:
+                    for key in batch_sentiment:
+                        if line.lower().startswith(key):
+                            batch_sentiment[key] = int(line.split(":")[1].strip())
 
-            for key in overall_sentiment:
-                overall_sentiment[key] += batch_sentiment[key]
+                for key in overall_sentiment:
+                    overall_sentiment[key] += batch_sentiment[key]
+
+            # Check for unclassified reviews in this batch
+            if len(classifications) < len(batch):
+                unclassified_reviews.extend(batch[len(classifications):])
 
         except Exception as e:
             print(f"Error processing batch {i//batch_size + 1}: {str(e)}")
+            unclassified_reviews.extend(batch)
+
+    # Final pass for unclassified reviews
+    if unclassified_reviews:
+        print("Processing unclassified reviews:")
+        for review in unclassified_reviews[:]:
+            prompt = f"Analyze the sentiment of the following review. Respond with ONLY 'Positive', 'Negative', or 'Neutral'.\n\nReview: {review}"
+            try:
+                chat_completion = client.chat.completions.create(
+                    messages=[{"role": "user", "content": prompt}],
+                    model="llama3-8b-8192",
+                )
+                response = chat_completion.choices[0].message.content.strip().lower()
+                if response in overall_sentiment:
+                    overall_sentiment[response] += 1
+                    unclassified_reviews.remove(review)
+                    print(f"Classified as {response}: {review}")
+                else:
+                    print(f"Failed to classify: {review}")
+            except Exception as e:
+                print(f"Error processing review: {str(e)}")
 
     print(f"Overall sentiment counts: {overall_sentiment}")
-    return overall_sentiment
+    return overall_sentiment, unclassified_reviews
 
