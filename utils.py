@@ -19,99 +19,72 @@ def process_reviews(filepath):
     else:
         raise Exception("Invalid file format")
 
-    # Check for column name in a case-insensitive manner
-    review_column = None
-    for col in df.columns:
-        if col.strip().lower() == 'review':
-            review_column = col
-            break
-
+    review_column = next((col for col in df.columns if col.strip().lower() == 'review'), None)
     if review_column is None:
         raise Exception("Missing 'Review' column or equivalent")
 
-    # Remove any rows with empty reviews
     df = df.dropna(subset=[review_column])
     reviews = df[review_column].tolist()
 
     print(f"Total number of non-empty reviews: {len(reviews)}")
 
-    # Perform sentiment analysis
     sentiment_counts = get_sentiment_analysis(reviews)
     
-    # Calculate proportions
-    total = sum(sentiment_counts.values())
+    total_classified = sum(sentiment_counts.values())
     sentiment_proportions = {
-        key: round(value / total, 2) if total > 0 else 0.0
+        key: round(value / total_classified, 2) if total_classified > 0 else 0.0
         for key, value in sentiment_counts.items()
     }
     
     return {
         "counts": sentiment_counts,
         "proportions": sentiment_proportions,
-        "total_reviews": len(reviews)
+        "total_reviews": len(reviews),
+        "unclassified": len(reviews) - total_classified
     }
 
-def get_sentiment_analysis(reviews):
-    prompt = (
-        "Please analyze the following reviews and provide the counts of positive, negative, and neutral reviews. "
-        "Ensure that every review is classified and the total count matches the number of reviews provided. "
-        "Respond in the following format:\n"
-        "Positive: <count>\n"
-        "Negative: <count>\n"
-        "Neutral: <count>\n"
-        "Total: <total count>\n\n"
-        "Here are the reviews:\n"
-    )
-    prompt += "\n".join(reviews)
+def get_sentiment_analysis(reviews, batch_size=10):
+    overall_sentiment = {"positive": 0, "negative": 0, "neutral": 0}
 
-    # Send the prompt to the Groq chatbot
-    chat_completion = client.chat.completions.create(
-        messages=[
-            {
-                "role": "user",
-                "content": prompt,
-            }
-        ],
-        model="llama3-8b-8192",
-    )
+    for i in range(0, len(reviews), batch_size):
+        batch = reviews[i:i+batch_size]
+        prompt = (
+            "Analyze the sentiment of each of the following reviews. "
+            "For each review, respond with ONLY 'Positive', 'Negative', or 'Neutral'. "
+            "After classifying all reviews, provide a summary count in the format:\n"
+            "Positive: <count>\nNegative: <count>\nNeutral: <count>\n\n"
+            "Reviews:\n"
+        )
+        prompt += "\n".join(f"{j+1}. {review}" for j, review in enumerate(batch))
 
-    # Debugging: Print the full response
-    print(chat_completion)
+        try:
+            chat_completion = client.chat.completions.create(
+                messages=[{"role": "user", "content": prompt}],
+                model="llama3-8b-8192",
+            )
 
-    # Check if choices were returned
-    if not chat_completion.choices:
-        raise Exception("No choices returned from the Groq API")
+            response_content = chat_completion.choices[0].message.content.strip()
+            print(f"Batch {i//batch_size + 1} response:\n{response_content}\n")
 
-    # Get the response from the chatbot
-    response_content = chat_completion.choices[0].message.content.strip()
+            lines = response_content.split('\n')
+            summary_start = next(i for i, line in enumerate(lines) if line.startswith("Positive:"))
+            summary = lines[summary_start:]
 
-    # Initialize sentiment counts
-    sentiment_scores = {
-        "positive": 0,
-        "negative": 0,
-        "neutral": 0,
-    }
+            batch_sentiment = {"positive": 0, "negative": 0, "neutral": 0}
+            for line in summary:
+                if line.startswith("Positive:"):
+                    batch_sentiment["positive"] = int(line.split(":")[1].strip())
+                elif line.startswith("Negative:"):
+                    batch_sentiment["negative"] = int(line.split(":")[1].strip())
+                elif line.startswith("Neutral:"):
+                    batch_sentiment["neutral"] = int(line.split(":")[1].strip())
 
-    # Extract counts from the response content
-    try:
-        total_from_api = 0
-        for line in response_content.splitlines():
-            if line.startswith("Positive:"):
-                sentiment_scores["positive"] = int(line.split(":")[1].strip())
-            elif line.startswith("Negative:"):
-                sentiment_scores["negative"] = int(line.split(":")[1].strip())
-            elif line.startswith("Neutral:"):
-                sentiment_scores["neutral"] = int(line.split(":")[1].strip())
-            elif line.startswith("Total:"):
-                total_from_api = int(line.split(":")[1].strip())
-                
-        # Verify that all reviews were classified
-        total_classified = sum(sentiment_scores.values())
-        if total_classified != len(reviews) or total_classified != total_from_api:
-            print(f"Warning: Mismatch in review counts. Classified: {total_classified}, Original: {len(reviews)}, API Total: {total_from_api}")
-            
-    except (IndexError, ValueError) as e:
-        raise Exception("Error parsing the response content: " + str(e))
+            for key in overall_sentiment:
+                overall_sentiment[key] += batch_sentiment[key]
 
-    return sentiment_scores
+        except Exception as e:
+            print(f"Error processing batch {i//batch_size + 1}: {str(e)}")
+
+    print(f"Overall sentiment counts: {overall_sentiment}")
+    return overall_sentiment
 
