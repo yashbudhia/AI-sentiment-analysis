@@ -5,7 +5,7 @@ import shutil
 
 app = FastAPI()
 
-UPLOAD_FOLDER = 'uploads'
+UPLOAD_FOLDER = os.path.join(os.getcwd(), 'uploads')
 ALLOWED_EXTENSIONS = {'csv', 'xlsx'}
 
 # Helper function to validate file type

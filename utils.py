@@ -1,5 +1,10 @@
+import os
 import pandas as pd
 import requests
+
+from dotenv import load_dotenv
+
+load_dotenv()  
 
 def process_reviews(filepath):
     file_extension = filepath.split('.')[-1]
@@ -22,7 +27,8 @@ def process_reviews(filepath):
 
 def get_sentiment_analysis(reviews):
     api_url = "https://api.groq.com/analyze"
-    headers = {"Authorization": "Bearer YOUR_API_KEY"}
+    api_key = os.getenv("GROQ_API_KEY")
+    headers = {"Authorization": f"Bearer {api_key}"}
 
     positive, negative, neutral = 0, 0, 0
 
