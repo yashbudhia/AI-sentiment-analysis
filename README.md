@@ -49,3 +49,11 @@ AI-Sentiment Analysis is a Python-based application that processes customer revi
 - Then Go to Postman or any other api tester , and send a POST request to http://127.0.0.1:8000/analyze
 - In the body go to form data , create a new field and add your csv or xlsx file there and send the post request
 - You will get the reviews counted in postive, negative and neutral based on the sentiment.
+- format of count -
+
+```{
+    "positive": 25,
+    "negative": 23,
+    "neutral": 3
+}
+```
