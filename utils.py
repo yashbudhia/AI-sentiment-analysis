@@ -19,7 +19,7 @@ def process_reviews(filepath):
         filepath (str): The path to the file containing reviews.
         
     Returns:
-        dict: A dictionary with sentiment counts, proportions, and total reviews.
+        dict: A dictionary with sentiment scores for positive, negative, and neutral sentiments.
     """
     
     # Extract the file extension to determine the file type
@@ -47,20 +47,12 @@ def process_reviews(filepath):
 
     # Get sentiment analysis results
     sentiment_counts, unclassified_reviews = get_sentiment_analysis(reviews)
-    
-    # Calculate proportions of each sentiment category
-    total_classified = sum(sentiment_counts.values())  # Total classified reviews
-    sentiment_proportions = {
-        key: round(value / total_classified, 2) if total_classified > 0 else 0.0
-        for key, value in sentiment_counts.items()  # Calculate proportions for each sentiment
-    }
-    
+
+    # Return the sentiment scores directly
     return {
-        "counts": sentiment_counts,  # Counts of each sentiment
-        "proportions": sentiment_proportions,  # Proportions of each sentiment
-        "total_reviews": len(reviews),  # Total number of reviews processed
-        "unclassified": len(unclassified_reviews),  # Number of unclassified reviews
-        "unclassified_reviews": unclassified_reviews  # List of unclassified reviews
+        "positive": sentiment_counts["positive"],
+        "negative": sentiment_counts["negative"],
+        "neutral": sentiment_counts["neutral"],
     }
 
 def get_sentiment_analysis(reviews, batch_size=10):
